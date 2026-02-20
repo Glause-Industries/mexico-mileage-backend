@@ -1,5 +1,6 @@
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.responses import StreamingResponse
+from fastapi.middleware.cors import CORSMiddleware
 import pandas as pd
 import io
 import asyncio
@@ -8,12 +9,20 @@ import os
 
 app = FastAPI(title="Mexico Mileage API")
 
+# Allow calls from your GitHub Pages site (and anywhere else, for now)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],      # you can restrict this later to your Pages URL
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 
 if not GOOGLE_API_KEY:
     print("WARNING: GOOGLE_API_KEY environment variable not set")
 
-# Very simple country detection based on whether the "Mexico" columns are filled
 # Excel columns expected:
 # - Mexico Origin City and State
 # - Origin City, Origin State, Origin Zip
