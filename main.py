@@ -28,6 +28,7 @@ if not GOOGLE_API_KEY:
 # - Origin City, Origin State, Origin Zip
 # - Mexico Dest City and State
 # - Destination City, Destination State, Destination Zip
+# - Border Crossing City
 
 def norm(v):
     if v is None:
