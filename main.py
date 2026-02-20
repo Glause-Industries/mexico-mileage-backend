@@ -30,6 +30,21 @@ if not GOOGLE_API_KEY:
 # - Destination City, Destination State, Destination Zip
 # - Border Crossing City
 
+# Mapping of border crossing cities to US states
+BORDER_CITY_STATE = {
+    "LAREDO": "TX",
+    "MCALLEN": "TX",
+    "EL PASO": "TX",
+    "BROWNSVILLE": "TX",
+    "NOGALES": "AZ",
+    "CALEXICO": "CA",
+    "SAN YSIDRO": "CA",
+    "DOUGLAS": "AZ",
+    "EAGLE PASS": "TX",
+    "DEL RIO": "TX",
+    # add more as needed
+}
+
 def norm(v):
     if v is None:
         return None
@@ -51,7 +66,7 @@ def build_address(city_state_str, zip_code=None, country="Mexico"):
     parts.append(country)
     return ", ".join(parts)
 
-def build_us_address(city, state, zip_code):
+def build_us_address(city, state, zip_code=None):
     if not city or not state:
         return None
     parts = [city.strip(), state.strip()]
@@ -62,8 +77,15 @@ def build_us_address(city, state, zip_code):
 
 def classify_and_build_addresses(row):
     """
-    Implements your 4 routing rules and returns (origin_address, destination_address)
-    for the Mexico leg only. If no Mexico leg, returns (None, None).
+    Implements the 4 routing rules and returns (origin_address, destination_address)
+    for the Mexico leg only, using the Border Crossing City column.
+    If no Mexico leg, returns (None, None).
+
+    Rules:
+    1. MX origin, US destination: MX origin -> border crossing (US)
+    2. US origin, MX destination: border crossing (US) -> MX destination
+    3. MX origin, MX destination: MX origin -> MX destination
+    4. Neither side in MX: no route
     """
     mx_origin_cs = norm(row.get("Mexico Origin City and State"))
     mx_dest_cs   = norm(row.get("Mexico Dest City and State"))
@@ -76,24 +98,31 @@ def classify_and_build_addresses(row):
     dest_state = norm(row.get("Destination State"))
     dest_zip   = norm(row.get("Destination Zip"))
 
+    border_city = norm(row.get("Border Crossing City"))
+
+    # Build US border address using mapping
+    border_addr = None
+    if border_city:
+        key = border_city.upper()
+        us_state = BORDER_CITY_STATE.get(key)
+        if us_state:
+            border_addr = build_us_address(border_city, us_state, None)
+
     # Rule 1: Origin in Mexico and Destination in the U.S.
     if mx_origin_cs and not mx_dest_cs:
         # Mexico origin address
         mx_origin_addr = build_address(mx_origin_cs, None, "Mexico")
-        # Border crossing on US side: use the U.S. destination columns
-        border_addr = build_us_address(dest_city, dest_state, dest_zip)
+        # Use border crossing as the US side end point
         if not border_addr:
             return None, None
         return mx_origin_addr, border_addr
 
     # Rule 2: Origin in the U.S. and Destination in Mexico
     if not mx_origin_cs and mx_dest_cs:
-        # Border on US side: use U.S. origin columns
-        border_addr = build_us_address(orig_city, orig_state, orig_zip)
-        # Mexico destination
-        mx_dest_addr = build_address(mx_dest_cs, None, "Mexico")
-        if not border_addr or not mx_dest_addr:
+        # Use border crossing as the US side starting point
+        if not border_addr:
             return None, None
+        mx_dest_addr = build_address(mx_dest_cs, None, "Mexico")
         return border_addr, mx_dest_addr
 
     # Rule 3: Origin and Destination both in Mexico
@@ -165,6 +194,7 @@ async def calculate_mileage(file: UploadFile = File(...)):
         "Destination City",
         "Destination State",
         "Destination Zip",
+        "Border Crossing City",
     ]
     missing = [c for c in required_cols if c not in df.columns]
     if missing:
